@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ResourceTrack 360</title>
+    
+    <!-- 1. Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              kubra: { green: '#91bd00', blue: '#0296d4', grey: '#4e5f70', orange: '#f47521' },
+              brand: { 50: '#f0f9ff', 100: '#e0f2fe', 500: '#0296d4', 600: '#0284c7', 900: '#4e5f70' }
+            }
+          }
+        }
+      }
+    </script>
+
+    <!-- 2. React Dependencies -->
+    <script crossorigin src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    
+    <!-- 3. Prop-Types (REQUIRED for Recharts UMD) -->
+    <script src="https://unpkg.com/prop-types@15.8.1/prop-types.min.js"></script>
+
+    <!-- 4. Recharts -->
+    <script src="https://unpkg.com/recharts@2.10.3/umd/Recharts.js"></script>
+    
+    <!-- 5. Lucide Icons (Vanilla) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- 6. LZ-String (Compression) -->
+    <script src="https://unpkg.com/lz-string@1.5.0/libs/lz-string.min.js"></script>
+
+    <!-- 7. SheetJS (Excel) -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+
+    <!-- 8. Babel (For JSX) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #0296d4;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #error-container { display: none; padding: 20px; background: #fee2e2; color: #991b1b; border: 1px solid #f87171; margin: 20px; border-radius: 8px; font-family: sans-serif; }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "recharts": "https://esm.sh/recharts@^3.6.0",
+    "xlsx": "https://esm.sh/xlsx@^0.18.5",
+    "lz-string": "https://esm.sh/lz-string@^1.5.0",
+    "vite": "https://esm.sh/vite@^7.3.1",
+    "@vitejs/plugin-react": "https://esm.sh/@vitejs/plugin-react@^5.1.2"
+  }
+}
+</script>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased">
+    
+    <div id="error-container">
+        <h3 class="font-bold text-lg mb-2">Application Error</h3>
+        <p id="error-message">Unknown error occurred.</p>
+    </div>
+
+    <div id="root">
+        <div class="min-h-screen flex flex-col items-center justify-center">
+            <div class="loading-spinner mb-4"></div>
+            <p class="text-slate-500 font-medium">Loading ResourceTrack 360...</p>
+        </div>
+    </div>
+
+    <script type="text/babel">
+        // --- 1. GLOBAL SETUP & IMPORTS ---
+        
+        // Error trapping
+        window.onerror = function(message, source, lineno, colno, error) {
+            document.getElementById('root').style.display = 'none';
+            document.getElementById('error-container').style.display = 'block';
+            document.getElementById('error-message').textContent = message + " (Line: " + lineno + ")";
+            console.error(error);
+            return false;
+        };
+
+        try {
+            const { useState, useEffect, useMemo, useRef } = React;
+            
+            // Recharts Destructuring
+            const { 
+                ComposedChart, Line, Bar, BarChart, XAxis, YAxis, CartesianGrid, 
+                Tooltip, Legend, ResponsiveContainer, AreaChart, Area, ReferenceLine, Cell 
+            } = window.Recharts;
+
+            // --- 2. ICON HELPER ---
+            // Helper to render vanilla lucide icons as React components
+            const createIcon = (name) => {
+                return ({ color = "currentColor", size = 24, className, ...props }) => {
+                    // Check if icon exists in global lucide object
+                    if (window.lucide && window.lucide.icons && window.lucide.icons[name]) {
+                        const iconDef = window.lucide.icons[name];
+                        // iconDef is usually [tag, attrs, children] or just children in newer versions
+                        // But vanilla lucide.icons[name] gives the definition.
+                        
+                        // We will construct SVG manually from definition for React
+                        // Definition format: [ "svg", { ...attrs }, [ [ "path", { ... } ], ... ] ]
+                        // Actually, lucide.icons[name] is mostly likely an array of children elements definitions.
+                        
+                        return (
+                            <svg 
+                                xmlns="http://www.w3.org/2000/svg" 
+                                width={size} 
+                                height={size} 
+                                viewBox="0 0 24 24" 
+                                fill="none" 
+                                stroke={color} 
+                                strokeWidth="2" 
+                                strokeLinecap="round" 
+                                strokeLinejoin="round" 
+                                className={`lucide lucide-${name.toLowerCase()} ${className || ''}`}
+                                {...props}
+                            >
+                                {iconDef.map((child, index) => {
+                                    const [tagName, tagAttrs] = child;
+                                    return React.createElement(tagName, { ...tagAttrs, key: index });
+                                })}
+                            </svg>
+                        );
+                    }
+                    return <span className="text-xs text-red-500">?{name}</span>;
+                };
+            };
+
+            // Define Icons
+            const LayoutDashboard = createIcon('LayoutDashboard');
+            const Table = createIcon('Table');
+            const Share2 = createIcon('Share2');
+            const Check = createIcon('Check');
+            const Lock = createIcon('Lock');
+            const Upload = createIcon('Upload');
+            const AlertCircle = createIcon('AlertCircle'); 
+            const CheckCircle2 = createIcon('CheckCircle2'); 
+            const CalendarPlus = createIcon('CalendarPlus');
+            const ChevronDown = createIcon('ChevronDown');
+            const AlertTriangle = createIcon('AlertTriangle');
+            const ArrowUpRight = createIcon('ArrowUpRight');
+            const ArrowDownRight = createIcon('ArrowDownRight');
+            const Activity = createIcon('Activity');
+            const DollarSign = createIcon('DollarSign');
+            const Clock = createIcon('Clock');
+            const TrendingDown = createIcon('TrendingDown');
+            const TrendingUp = createIcon('TrendingUp');
+            const Filter = createIcon('Filter');
+
+
+            // --- 3. TYPES & CONSTANTS ---
+            
+            const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            
+            const COLORS = {
+                alloc: '#1e3a8a', 
+                actual: '#991b1b', 
+                good: '#166534', 
+                neutral: '#cbd5e1',
+                kubraGreen: '#91bd00', 
+                kubraBlue: '#0296d4', 
+                kubraOrange: '#f47521'
+            };
+
+            const getWeekRange = (weekNum) => {
+                const startDate = new Date('2025-01-02');
+                const startOffset = (weekNum - 1) * 7;
+                const currentStart = new Date(startDate);
+                currentStart.setDate(startDate.getDate() + startOffset);
+                const currentEnd = new Date(currentStart);
+                currentEnd.setDate(currentStart.getDate() + 4); 
+                const fmt = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
+                return `${fmt(currentStart)} - ${fmt(currentEnd)}`;
+            };
+
+            const generateMockData = () => {
+                const data = [];
+                let cumulativeVar = 0;
+                for (let i = 1; i <= 52; i++) {
+                    let allocPm = 8.75; let allocLead = 8.75; let allocDev1 = 26.25; let allocDev2 = 8.75;
+                    if (i % 4 === 0) { allocPm = 7; allocLead = 7; allocDev1 = 21; allocDev2 = 7; }
+                    const allocatedTotal = allocPm + allocLead + allocDev1 + allocDev2;
+                    let varianceFactor = 1.0;
+                    let comment = "";
+                    if (i === 1) { varianceFactor = 0.4; comment = "Jan 1st 2025 was holiday"; } 
+                    else if (i === 8) { varianceFactor = 0.8; comment = "Feb 17th holiday"; } 
+                    else if (i > 20 && i < 28) { varianceFactor = 1.2; } 
+                    else { varianceFactor = 0.9 + (Math.random() * 0.2); }
+                    const actPm = parseFloat((allocPm * (0.8 + Math.random() * 0.4)).toFixed(2));
+                    const actLead = parseFloat((allocLead * varianceFactor).toFixed(2));
+                    const actDev1 = parseFloat((allocDev1 * varianceFactor).toFixed(2));
+                    const actDev2 = parseFloat((allocDev2 * (varianceFactor - 0.1)).toFixed(2));
+                    const actualTotal = parseFloat((actPm + actLead + actDev1 + actDev2).toFixed(2));
+                    const variance = parseFloat((actualTotal - allocatedTotal).toFixed(2));
+                    cumulativeVar += variance;
+                    data.push({
+                        id: i,
+                        weekRange: getWeekRange(i),
+                        allocated: { pm: allocPm, lead: allocLead, dev1: allocDev1, dev2: allocDev2 },
+                        actual: { pm: actPm, lead: actLead, dev1: actDev1, dev2: actDev2 },
+                        allocatedTotal,
+                        actualTotal,
+                        variance,
+                        cumulativeVariance: parseFloat(cumulativeVar.toFixed(2)),
+                        comments: comment
+                    });
+                }
+                return data;
+            };
+
+            const INITIAL_DATA = generateMockData();
+
+            // --- 4. EXCEL PARSER ---
+            const parseExcelData = async (file) => {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        try {
+                            const data = new Uint8Array(e.target.result);
+                            const workbook = window.XLSX.read(data, { type: 'array' });
+                            const firstSheetName = workbook.SheetNames[0];
+                            const worksheet = workbook.Sheets[firstSheetName];
+                            const jsonData = window.XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
+                            const parsedData = [];
+                            let headerRowIndex = -1;
+                            let weekColIndex = -1;
+                            let allocPmIdx = -1, allocLeadIdx = -1, allocDev1Idx = -1, allocDev2Idx = -1;
+                            let actPmIdx = -1, actLeadIdx = -1, actDev1Idx = -1, actDev2Idx = -1;
+                            let commentsColIndex = -1;
+
+                            const findCol = (row, terms, startIdx = 0) => {
+                                return row.findIndex((cell, idx) => idx >= startIdx && terms.some(term => String(cell).toLowerCase().includes(term)));
+                            };
+
+                            for (let r = 0; r < Math.min(20, jsonData.length); r++) {
+                                const row = jsonData[r].map(cell => String(cell).toLowerCase().trim());
+                                if (row.includes('week') && row.includes('project manager')) {
+                                    headerRowIndex = r;
+                                    weekColIndex = row.indexOf('week');
+                                    allocPmIdx = findCol(row, ['project manager'], 0);
+                                    allocLeadIdx = findCol(row, ['technical lead', 'tech lead', 'lead'], 0);
+                                    allocDev1Idx = findCol(row, ['developer 1', 'dev 1'], 0);
+                                    allocDev2Idx = findCol(row, ['developer 2', 'dev 2'], 0);
+
+                                    const startSearchForActuals = Math.max(allocPmIdx, allocLeadIdx, allocDev1Idx, allocDev2Idx) + 1;
+                                    actPmIdx = findCol(row, ['project manager'], startSearchForActuals);
+                                    actLeadIdx = findCol(row, ['technical lead', 'tech lead', 'lead'], startSearchForActuals);
+                                    actDev1Idx = findCol(row, ['developer 1', 'dev 1'], startSearchForActuals);
+                                    actDev2Idx = findCol(row, ['developer 2', 'dev 2'], startSearchForActuals);
+                                    commentsColIndex = findCol(row, ['comments', 'comment'], startSearchForActuals);
+                                    break;
+                                }
+                            }
+
+                            if (headerRowIndex === -1) throw new Error("Could not identify the header row.");
+
+                            if (allocLeadIdx === -1) allocLeadIdx = allocPmIdx + 1;
+                            if (allocDev1Idx === -1) allocDev1Idx = allocPmIdx + 2;
+                            if (allocDev2Idx === -1) allocDev2Idx = allocPmIdx + 3;
+                            if (actPmIdx !== -1) {
+                                if (actLeadIdx === -1) actLeadIdx = actPmIdx + 1;
+                                if (actDev1Idx === -1) actDev1Idx = actPmIdx + 2;
+                                if (actDev2Idx === -1) actDev2Idx = actPmIdx + 3;
+                            }
+
+                            let cumulativeVar = 0;
+                            let weekCounter = 1;
+
+                            for (let r = headerRowIndex + 1; r < jsonData.length; r++) {
+                                const row = jsonData[r];
+                                if (!row || !row[weekColIndex]) continue;
+                                const weekRange = String(row[weekColIndex] || '').trim();
+                                if (!weekRange || weekRange.toLowerCase() === 'totals' || weekRange.toLowerCase() === 'total') continue;
+
+                                const val = (idx) => {
+                                    if (idx === -1) return 0;
+                                    const v = row[idx];
+                                    if (typeof v === 'number') return v;
+                                    if (typeof v === 'string') {
+                                        const clean = v.replace(/[^0-9.-]/g, '');
+                                        return clean ? parseFloat(clean) : 0;
+                                    }
+                                    return 0;
+                                };
+
+                                const alloc = { pm: val(allocPmIdx), lead: val(allocLeadIdx), dev1: val(allocDev1Idx), dev2: val(allocDev2Idx) };
+                                const act = { pm: val(actPmIdx), lead: val(actLeadIdx), dev1: val(actDev1Idx), dev2: val(actDev2Idx) };
+                                const allocatedTotal = alloc.pm + alloc.lead + alloc.dev1 + alloc.dev2;
+                                const actualTotal = act.pm + act.lead + act.dev1 + act.dev2;
+                                const variance = actualTotal - allocatedTotal;
+                                cumulativeVar += variance;
+
+                                parsedData.push({
+                                    id: weekCounter++,
+                                    weekRange,
+                                    allocated: alloc,
+                                    actual: act,
+                                    allocatedTotal: parseFloat(allocatedTotal.toFixed(2)),
+                                    actualTotal: parseFloat(actualTotal.toFixed(2)),
+                                    variance: parseFloat(variance.toFixed(2)),
+                                    cumulativeVariance: parseFloat(cumulativeVar.toFixed(2)),
+                                    comments: commentsColIndex > -1 ? String(row[commentsColIndex] || '') : ''
+                                });
+                            }
+                            resolve(parsedData);
+                        } catch (error) {
+                            reject(new Error(error.message || "Failed to parse Excel file"));
+                        }
+                    };
+                    reader.readAsArrayBuffer(file);
+                });
+            };
+
+            // --- 5. COMPONENTS ---
+
+            const Layout = ({ children, activeTab, onTabChange, pmName, isReadOnly, onShare }) => {
+                const [copied, setCopied] = useState(false);
+                const handleShareClick = () => {
+                    if (onShare) {
+                        onShare();
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                    }
+                };
+
+                return (
+                    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
+                        <aside className="w-full md:w-64 bg-kubra-grey text-white flex-shrink-0 flex flex-col">
+                            <div className="p-6 border-b border-slate-600/30">
+                                <div className="mb-6">
+                                    <svg viewBox="0 0 200 60" className="h-10 w-auto" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M0 0 H40 L0 30 Z" fill="#0296d4" />
+                                        <path d="M0 60 H40 L0 30 Z" fill="#5F707F" />
+                                        <path d="M0 30 L40 0 V60 Z" fill="#91bd00" />
+                                        <text x="50" y="42" fontFamily="Arial, sans-serif" fontWeight="bold" fontSize="38" fill="#FFFFFF" letterSpacing="-1">KUBRA</text>
+                                    </svg>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <h1 className="text-lg font-bold tracking-tight leading-tight text-slate-100">Resource<br/>Track 360</h1>
+                                </div>
+                                <p className="text-xs text-slate-300 mt-2 font-medium">Allocation vs. Utilization</p>
+                                {isReadOnly && (
+                                    <div className="mt-4 flex items-center gap-2 bg-slate-700/50 px-3 py-2 rounded-lg border border-slate-500/30 text-xs text-orange-200 font-medium">
+                                        <Lock size={12} /><span>Read-Only View</span>
+                                    </div>
+                                )}
+                            </div>
+                            <nav className="p-4 space-y-2 flex-1">
+                                <button onClick={() => onTabChange('dashboard')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'dashboard' ? 'bg-kubra-blue text-white shadow-lg font-semibold' : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'}`}>
+                                    <LayoutDashboard size={20} /><span>Executive Dashboard</span>
+                                </button>
+                                
+                                <button onClick={() => onTabChange('data')} className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${activeTab === 'data' ? 'bg-kubra-blue text-white shadow-lg font-semibold' : 'text-slate-300 hover:bg-slate-700/50 hover:text-white'}`}>
+                                    <Table size={20} /><span>Data Entry Log</span>
+                                </button>
+                            </nav>
+                            <div className="p-4 space-y-4">
+                                {!isReadOnly && onShare && (
+                                    <button onClick={handleShareClick} className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg transition-all text-sm font-medium border border-slate-600 shadow-sm active:scale-95 cursor-pointer">
+                                        {copied ? <Check size={16} className="text-green-400" /> : <Share2 size={16} />}
+                                        {copied ? 'Link Copied!' : 'Share View'}
+                                    </button>
+                                )}
+                                <div className="border-t border-slate-600/30 pt-4">
+                                    <div className="flex items-center gap-3 text-slate-300 px-2">
+                                        <div className="w-8 h-8 rounded-full bg-kubra-blue flex items-center justify-center text-white font-bold text-xs shadow-md border-2 border-white/10">
+                                            {pmName.split(' ').map(n => n[0]).join('').substring(0,2).toUpperCase()}
+                                        </div>
+                                        <div className="overflow-hidden">
+                                            <p className="text-sm font-medium text-white truncate">{pmName}</p>
+                                            <p className="text-xs truncate opacity-80">Project Manager</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </aside>
+                        <main className="flex-1 overflow-x-hidden overflow-y-auto bg-slate-50 relative">{children}</main>
+                    </div>
+                );
+            };
+
+            const KPICard = ({ title, value, subValue, icon, trend, colorClass }) => (
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex items-start justify-between">
+                    <div>
+                        <p className="text-sm font-medium text-slate-500 mb-1">{title}</p>
+                        <h3 className="text-2xl font-bold text-slate-800">{value}</h3>
+                        {subValue && (
+                            <div className={`text-xs mt-2 font-medium flex items-center gap-1 ${trend === 'up' ? 'text-emerald-600' : trend === 'down' ? 'text-rose-600' : 'text-slate-400'}`}>
+                                {trend === 'up' && <ArrowUpRight size={14} />}
+                                {trend === 'down' && <ArrowDownRight size={14} />}
+                                <span>{subValue}</span>
+                            </div>
+                        )}
+                    </div>
+                    <div className={`p-3 rounded-lg ${colorClass} bg-opacity-10`}>
+                        {React.cloneElement(icon, { className: `w-6 h-6 ${colorClass.replace('bg-', 'text-')}` })}
+                    </div>
+                </div>
+            );
+
+            const CustomTooltip = ({ active, payload, label }) => {
+                if (active && payload && payload.length) {
+                    return (
+                        <div className="bg-white p-4 border border-slate-200 shadow-lg rounded-lg text-sm z-50">
+                            <p className="font-bold text-slate-800 mb-2">{label}</p>
+                            {payload.map((entry, index) => (
+                                <div key={index} className="flex items-center gap-2 mb-1">
+                                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color || entry.fill || entry.stroke }} />
+                                    <span className="text-slate-500 capitalize">{entry.name}:</span>
+                                    <span className="font-mono font-medium">{Number(entry.value).toFixed(1)} hrs</span>
+                                </div>
+                            ))}
+                        </div>
+                    );
+                }
+                return null;
+            };
+
+            const MonthWeeklyChart = ({ month, weeks }) => {
+                if (!weeks || weeks.length === 0) return (
+                    <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col items-center justify-center opacity-50 h-48">
+                        <h4 className="font-bold text-slate-400 text-sm mb-2">{month}</h4>
+                        <span className="text-xs text-slate-300">No Data</span>
+                    </div>
+                );
+                const totalAlloc = weeks.reduce((acc, curr) => acc + curr.allocatedTotal, 0);
+                const totalActual = weeks.reduce((acc, curr) => acc + curr.actualTotal, 0);
+                const variance = totalActual - totalAlloc;
+                const isOver = variance > 0;
+
+                return (
+                    <div className="bg-white p-5 rounded-xl border border-slate-100 shadow-sm flex flex-col hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 className="font-bold text-slate-800 text-sm">{month}</h4>
+                                <div className={`text-xs font-bold mt-1 ${isOver ? 'text-red-600' : 'text-emerald-600'}`}>{isOver ? '+' : ''}{variance.toFixed(1)} Var</div>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Burn</div>
+                                <div className={`text-sm font-bold ${isOver ? 'text-red-600' : 'text-slate-700'}`}>{totalAlloc > 0 ? ((totalActual / totalAlloc) * 100).toFixed(0) : 0}%</div>
+                            </div>
+                        </div>
+                        <div className="h-32 w-full mt-auto">
+                            <ResponsiveContainer width="100%" height="100%">
+                                <BarChart data={weeks} barCategoryGap="25%">
+                                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f8fafc" />
+                                    <XAxis dataKey="shortLabel" tick={{fontSize: 10, fill: '#94a3b8'}} axisLine={false} tickLine={false} interval={0}/>
+                                    <Tooltip cursor={{fill: '#f8fafc'}} content={({ active, payload, label }) => {
+                                        if (active && payload && payload.length) return (<div className="bg-slate-800 text-white text-xs p-2 rounded shadow-lg z-50"><div className="font-bold mb-1">{label}</div><div className="flex justify-between gap-3"><span>Alloc:</span> <span className="font-mono">{payload[0].value}</span></div><div className="flex justify-between gap-3"><span>Actual:</span> <span className="font-mono">{payload[1].value}</span></div></div>);
+                                        return null;
+                                    }} />
+                                    <Bar dataKey="allocatedTotal" name="Allocated" fill={COLORS.neutral} radius={[3,3,3,3]} />
+                                    <Bar dataKey="actualTotal" name="Actual" radius={[3,3,3,3]}>
+                                        {weeks.map((entry, index) => <Cell key={`cell-${index}`} fill={entry.actualTotal > entry.allocatedTotal ? COLORS.actual : COLORS.good} />)}
+                                    </Bar>
+                                </BarChart>
+                            </ResponsiveContainer>
+                        </div>
+                    </div>
+                );
+            };
+
+            const MonthlyRoleChart = ({ data, title, allocKey, actualKey }) => (
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 h-full">
+                    <div className="flex justify-between items-center mb-6">
+                        <h4 className="font-bold text-slate-800 text-sm">{title}</h4>
+                        <div className="flex gap-3 text-[10px] text-slate-500 font-medium">
+                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full" style={{backgroundColor: COLORS.alloc}}></div> Alloc</span>
+                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full" style={{backgroundColor: COLORS.good}}></div> Under</span>
+                            <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full" style={{backgroundColor: COLORS.actual}}></div> Over</span>
+                        </div>
+                    </div>
+                    <div className="h-[200px]">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }} barGap={2}>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                                <Tooltip content={<CustomTooltip />} cursor={{fill: '#f8fafc'}} />
+                                <Bar dataKey={allocKey} name="Allocated" fill={COLORS.alloc} barSize={12} radius={[2, 2, 0, 0]} />
+                                <Bar dataKey={actualKey} name="Actual" barSize={12} radius={[2, 2, 0, 0]}>
+                                    {data.map((entry, index) => <Cell key={`cell-${index}`} fill={entry[actualKey] > entry[allocKey] ? COLORS.actual : COLORS.good} />)}
+                                </Bar>
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+            );
+
+            const Dashboard = ({ data, clientName, pmName, year }) => {
+                const [selectedRole, setSelectedRole] = useState('all');
+                const ROLE_OPTIONS = [
+                    { value: 'all', label: 'All Roles' },
+                    { value: 'pm', label: 'Project Manager' },
+                    { value: 'lead', label: 'Technical Lead' },
+                    { value: 'dev1', label: 'Developer 1' },
+                    { value: 'dev2', label: 'Developer 2' },
+                ];
+
+                const filteredData = useMemo(() => {
+                    let runningVar = 0;
+                    return data.map(d => {
+                        let alloc = 0, act = 0;
+                        if (selectedRole === 'all') { alloc = d.allocatedTotal; act = d.actualTotal; } 
+                        else { alloc = d.allocated[selectedRole]; act = d.actual[selectedRole]; }
+                        const variance = act - alloc;
+                        runningVar += variance;
+                        return { ...d, shortLabel: `W${d.id}`, allocatedTotal: parseFloat(alloc.toFixed(2)), actualTotal: parseFloat(act.toFixed(2)), variance: parseFloat(variance.toFixed(2)), cumulativeVariance: parseFloat(runningVar.toFixed(2)) };
+                    });
+                }, [data, selectedRole]);
+
+                const weeksByMonth = useMemo(() => {
+                    const grouped = {};
+                    MONTH_NAMES.forEach(m => grouped[m] = []);
+                    filteredData.forEach(d => {
+                        const monthIdx = Math.min(Math.floor((d.id - 1) / 4.345), 11);
+                        if (grouped[MONTH_NAMES[monthIdx]]) grouped[MONTH_NAMES[monthIdx]].push(d);
+                    });
+                    return grouped;
+                }, [filteredData]);
+
+                const gradientOffset = useMemo(() => {
+                    const dataMax = Math.max(...filteredData.map((i) => i.cumulativeVariance));
+                    const dataMin = Math.min(...filteredData.map((i) => i.cumulativeVariance));
+                    if (dataMax <= 0) return 0;
+                    if (dataMin >= 0) return 1;
+                    return dataMax / (dataMax - dataMin);
+                }, [filteredData]);
+
+                const metrics = useMemo(() => {
+                    const totalAlloc = filteredData.reduce((acc, curr) => acc + curr.allocatedTotal, 0);
+                    const totalAct = filteredData.reduce((acc, curr) => acc + curr.actualTotal, 0);
+                    const netVar = totalAct - totalAlloc;
+                    return { totalAllocated: totalAlloc, totalActual: totalAct, netVariance: netVar, utilizationRate: totalAlloc > 0 ? (totalAct / totalAlloc) * 100 : 0 };
+                }, [filteredData]);
+
+                const criticalVarianceWeeks = useMemo(() => [...filteredData].filter(d => d.variance > 0).sort((a, b) => b.variance - a.variance).slice(0, 3), [filteredData]);
+                const underBudgetWeeks = useMemo(() => [...filteredData].filter(d => d.variance < 0).sort((a, b) => a.variance - b.variance).slice(0, 3), [filteredData]);
+
+                const monthlyData = useMemo(() => {
+                    const months = MONTH_NAMES.map(name => ({ name, alloc_pm: 0, actual_pm: 0, alloc_lead: 0, actual_lead: 0, alloc_dev1: 0, actual_dev1: 0, alloc_dev2: 0, actual_dev2: 0 }));
+                    data.forEach(d => {
+                        const monthIdx = Math.min(Math.floor((d.id - 1) / 4.345), 11);
+                        months[monthIdx].alloc_pm += d.allocated.pm; months[monthIdx].actual_pm += d.actual.pm;
+                        months[monthIdx].alloc_lead += d.allocated.lead; months[monthIdx].actual_lead += d.actual.lead;
+                        months[monthIdx].alloc_dev1 += d.allocated.dev1; months[monthIdx].actual_dev1 += d.actual.dev1;
+                        months[monthIdx].alloc_dev2 += d.allocated.dev2; months[monthIdx].actual_dev2 += d.actual.dev2;
+                    });
+                    return months;
+                }, [data]);
+
+                return (
+                    <div className="p-8 space-y-8">
+                        <div className="flex flex-col xl:flex-row xl:items-end justify-between gap-6 border-b border-slate-200 pb-6">
+                            <div><h2 className="text-2xl font-bold text-slate-900">Executive Summary</h2><p className="text-slate-500">Year-to-Date Performance Analysis</p></div>
+                            <div className="flex flex-col md:flex-row gap-6 items-end md:items-center">
+                                <div className="flex items-center gap-2 bg-white p-1 rounded-lg border border-slate-200 shadow-sm">
+                                    <div className="pl-2 text-slate-400"><Filter size={16} /></div>
+                                    <select value={selectedRole} onChange={(e) => setSelectedRole(e.target.value)} className="bg-transparent border-none text-sm font-semibold text-slate-700 focus:ring-0 cursor-pointer py-1 pr-8">
+                                        {ROLE_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                                    </select>
+                                </div>
+                                <div className="flex gap-8 text-sm">
+                                    <div><span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold">Client</span><span className="font-bold text-slate-800 text-lg">{clientName}</span></div>
+                                    <div><span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold">Project Manager</span><span className="font-bold text-slate-800 text-lg">{pmName}</span></div>
+                                    <div><span className="block text-slate-400 text-xs uppercase tracking-wider font-semibold">Year</span><span className="font-bold text-slate-800 text-lg">{year}</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                            <KPICard title={selectedRole === 'all' ? "Total Allocated Hours" : "Role Allocated Hours"} value={metrics.totalAllocated.toLocaleString(undefined, { maximumFractionDigits: 0 })} subValue="Budgeted Baseline" icon={<Clock />} colorClass="bg-blue-800 text-blue-800" />
+                            <KPICard title={selectedRole === 'all' ? "Total Actual Hours" : "Role Actual Hours"} value={metrics.totalActual.toLocaleString(undefined, { maximumFractionDigits: 0 })} subValue={`${metrics.utilizationRate.toFixed(1)}% Utilization`} icon={<Activity />} trend={metrics.utilizationRate > 100 ? 'down' : 'up'} colorClass="bg-kubra-blue text-kubra-blue" />
+                            <KPICard title="Net Variance" value={`${metrics.netVariance > 0 ? '+' : ''}${metrics.netVariance.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} subValue={metrics.netVariance > 0 ? 'Over Budget' : 'Under Budget'} icon={<AlertTriangle />} trend={metrics.netVariance > 0 ? 'down' : 'up'} colorClass={metrics.netVariance > 0 ? "bg-red-700 text-red-700" : "bg-emerald-700 text-emerald-700"} />
+                            <KPICard title="Projected Year End" value={metrics.netVariance > 0 ? "Overrun Risk" : "On Track"} subValue="Based on current burn" icon={<DollarSign />} colorClass="bg-kubra-orange text-kubra-orange" />
+                        </div>
+
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                                <div className="flex items-center justify-between mb-6">
+                                    <div><h3 className="text-lg font-bold text-slate-800">Weekly Utilization Trend</h3><p className="text-xs text-slate-400">{selectedRole === 'all' ? 'All Roles Combined' : ROLE_OPTIONS.find(r => r.value === selectedRole)?.label}</p></div>
+                                    <div className="flex gap-4 text-sm text-slate-500">
+                                        <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-sm" style={{backgroundColor: COLORS.alloc}}></div> Allocated</span>
+                                        <span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full" style={{backgroundColor: COLORS.actual}}></div> Actual</span>
+                                    </div>
+                                </div>
+                                <div className="h-[350px]">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <ComposedChart data={filteredData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                            <XAxis dataKey="shortLabel" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} interval={filteredData.length > 20 ? 1 : 0} />
+                                            <YAxis tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                                            <Tooltip content={<CustomTooltip />} cursor={{ fill: '#f1f5f9' }} />
+                                            <Bar dataKey="allocatedTotal" name="Allocated" fill={COLORS.alloc} radius={[4, 4, 0, 0]} barSize={20} fillOpacity={0.8} />
+                                            <Line type="monotone" dataKey="actualTotal" name="Actual" stroke={COLORS.actual} strokeWidth={3} dot={false} activeDot={{ r: 6 }} />
+                                        </ComposedChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
+                            <div className="space-y-6 flex flex-col">
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex-1">
+                                    <div className="flex items-center gap-2 mb-4"><TrendingUp className="text-red-800" size={20} /><div><h3 className="text-lg font-bold text-slate-800">Top Over-Budget</h3><p className="text-xs text-slate-400">Weeks exceeding allocation</p></div></div>
+                                    <div className="space-y-3">
+                                        {criticalVarianceWeeks.length === 0 ? <p className="text-sm text-slate-500">No over-budget weeks detected.</p> : criticalVarianceWeeks.map((w) => (
+                                            <div key={w.id} className="p-3 bg-red-50 border border-red-100 rounded-lg"><div className="flex justify-between items-start"><div><p className="font-bold text-red-900 text-sm">Week {w.id} ({w.weekRange.split('-')[0]})</p><p className="text-xs text-red-700 mt-1">Exceeded by {w.variance.toFixed(1)} hrs</p></div><span className="bg-white text-red-800 text-xs font-bold px-2 py-1 rounded shadow-sm">{((w.actualTotal / w.allocatedTotal) * 100).toFixed(0)}%</span></div></div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 flex-1">
+                                    <div className="flex items-center gap-2 mb-4"><TrendingDown className="text-emerald-800" size={20} /><div><h3 className="text-lg font-bold text-slate-800">Top Under-Budget</h3><p className="text-xs text-slate-400">Weeks under allocation</p></div></div>
+                                    <div className="space-y-3">
+                                        {underBudgetWeeks.length === 0 ? <p className="text-sm text-slate-500">No under-budget weeks detected.</p> : underBudgetWeeks.map((w) => (
+                                            <div key={w.id} className="p-3 bg-emerald-50 border border-emerald-100 rounded-lg"><div className="flex justify-between items-start"><div><p className="font-bold text-emerald-900 text-sm">Week {w.id} ({w.weekRange.split('-')[0]})</p><p className="text-xs text-emerald-700 mt-1">Under by {Math.abs(w.variance).toFixed(1)} hrs</p></div><span className="bg-white text-emerald-800 text-xs font-bold px-2 py-1 rounded shadow-sm">{((w.actualTotal / w.allocatedTotal) * 100).toFixed(0)}%</span></div></div>
+                                        ))}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100">
+                            <div className="flex items-center justify-between mb-6"><div><h3 className="text-lg font-bold text-slate-800">Cumulative Variance Trajectory</h3><p className="text-xs text-slate-400">Running total of budget deviation (Over/Under)</p></div><div className="flex gap-4 text-sm text-slate-500"><span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-red-600"></div> Over Budget</span><span className="flex items-center gap-1"><div className="w-3 h-3 rounded-full bg-emerald-600"></div> Under Budget</span></div></div>
+                            <div className="h-[300px]">
+                                <ResponsiveContainer width="100%" height="100%">
+                                    <AreaChart data={filteredData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                                        <defs><linearGradient id="splitColor" x1="0" y1="0" x2="0" y2="1"><stop offset={gradientOffset} stopColor="#dc2626" stopOpacity={0.1}/><stop offset={gradientOffset} stopColor="#059669" stopOpacity={0.1}/></linearGradient><linearGradient id="splitStroke" x1="0" y1="0" x2="0" y2="1"><stop offset={gradientOffset} stopColor="#dc2626" stopOpacity={1}/><stop offset={gradientOffset} stopColor="#059669" stopOpacity={1}/></linearGradient></defs>
+                                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                                        <XAxis dataKey="shortLabel" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} interval={filteredData.length > 20 ? 2 : 0} />
+                                        <YAxis tick={{ fontSize: 12, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                                        <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#94a3b8', strokeWidth: 1 }} />
+                                        <ReferenceLine y={0} stroke="#64748b" strokeDasharray="3 3" />
+                                        <Area type="monotone" dataKey="cumulativeVariance" name="Cumulative Variance" stroke="url(#splitStroke)" fill="url(#splitColor)" strokeWidth={2} />
+                                    </AreaChart>
+                                </ResponsiveContainer>
+                            </div>
+                        </div>
+
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between"><div><h3 className="text-xl font-bold text-slate-800">Monthly Breakdown: Weekly Trends</h3><p className="text-sm text-slate-500">Granular view of weekly performance grouped by month for <span className="font-bold text-slate-700 ml-1">{selectedRole === 'all' ? 'All Roles' : ROLE_OPTIONS.find(r => r.value === selectedRole)?.label}</span></p></div><div className="flex gap-4 text-xs font-medium text-slate-500"><span className="flex items-center gap-1"><div className="w-2 h-2 rounded bg-slate-300"></div> Allocated</span><span className="flex items-center gap-1"><div className="w-2 h-2 rounded bg-red-600"></div> Over</span><span className="flex items-center gap-1"><div className="w-2 h-2 rounded bg-emerald-600"></div> Under</span></div></div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                {MONTH_NAMES.map((month) => <MonthWeeklyChart key={month} month={month} weeks={weeksByMonth[month]} />)}
+                            </div>
+                        </div>
+
+                        <div className="space-y-6 pt-6 border-t border-slate-200">
+                            <div className="flex items-center justify-between"><h3 className="text-xl font-bold text-slate-800">Annual Aggregate: Monthly Totals</h3><p className="text-sm text-slate-500">High-level comparison of Allocation vs Actuals</p></div>
+                            <div className={`grid gap-6 ${selectedRole === 'all' ? 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4' : 'grid-cols-1'}`}>
+                                {(selectedRole === 'all' || selectedRole === 'pm') && <MonthlyRoleChart data={monthlyData} title="Project Manager" allocKey="alloc_pm" actualKey="actual_pm" />}
+                                {(selectedRole === 'all' || selectedRole === 'lead') && <MonthlyRoleChart data={monthlyData} title="Technical Lead" allocKey="alloc_lead" actualKey="actual_lead" />}
+                                {(selectedRole === 'all' || selectedRole === 'dev1') && <MonthlyRoleChart data={monthlyData} title="Developer 1" allocKey="alloc_dev1" actualKey="actual_dev1" />}
+                                {(selectedRole === 'all' || selectedRole === 'dev2') && <MonthlyRoleChart data={monthlyData} title="Developer 2" allocKey="alloc_dev2" actualKey="actual_dev2" />}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const createYearData = (targetYear) => {
+                const newData = [];
+                let currentDate = new Date(targetYear, 0, 1, 12, 0, 0);
+                while (currentDate.getDay() !== 1) currentDate.setDate(currentDate.getDate() + 1);
+                const yearEnd = new Date(targetYear, 11, 31, 23, 59, 59);
+                let weekId = 1, safety = 0;
+                while (currentDate.getTime() <= yearEnd.getTime() && safety < 60) {
+                    const friday = new Date(currentDate); friday.setDate(currentDate.getDate() + 4);
+                    const fmt = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
+                    newData.push({
+                        id: weekId++, weekRange: `${fmt(currentDate)} - ${fmt(friday)}`,
+                        allocated: { pm: 0, lead: 0, dev1: 0, dev2: 0 }, actual: { pm: 0, lead: 0, dev1: 0, dev2: 0 },
+                        allocatedTotal: 0, actualTotal: 0, variance: 0, cumulativeVariance: 0, comments: ''
+                    });
+                    currentDate.setDate(currentDate.getDate() + 7); safety++;
+                }
+                return newData;
+            };
+
+            const DataLog = ({ data, onDataUpdate, clientName, setClientName, pmName, setPmName, year, availableYears, onSwitchYear, onInitializeNewYear, isReadOnly }) => {
+                const fileInputRef = useRef(null);
+                const [loading, setLoading] = useState(false);
+                const [error, setError] = useState(null);
+                const [successMsg, setSuccessMsg] = useState(null);
+                const [isConfirmingReset, setIsConfirmingReset] = useState(false);
+                const [targetInitYear, setTargetInitYear] = useState(year + 1);
+                const confirmTimeoutRef = useRef(null);
+
+                useEffect(() => { setTargetInitYear(year + 1); }, [year]);
+                useEffect(() => () => { if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current); }, []);
+
+                const handleFileUpload = async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setLoading(true); setError(null); setSuccessMsg(null);
+                    try {
+                        const parsedData = await parseExcelData(file);
+                        if (parsedData.length === 0) throw new Error("No valid weekly data found.");
+                        onDataUpdate(parsedData);
+                        setSuccessMsg(`Successfully imported ${parsedData.length} weeks.`);
+                    } catch (err) { setError(err.message || "Failed to parse."); } 
+                    finally { setLoading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
+                };
+
+                const handleInitClick = () => {
+                    if (isConfirmingReset) {
+                        if (confirmTimeoutRef.current) clearTimeout(confirmTimeoutRef.current);
+                        setIsConfirmingReset(false);
+                        const newData = createYearData(targetInitYear);
+                        onInitializeNewYear(targetInitYear, newData);
+                        setSuccessMsg(`Initialized ${targetInitYear}.`);
+                    } else {
+                        setIsConfirmingReset(true);
+                        confirmTimeoutRef.current = setTimeout(() => setIsConfirmingReset(false), 3000);
+                    }
+                };
+
+                const handleCellChange = (weekId, section, role, value) => {
+                    if (isReadOnly) return;
+                    const numValue = parseFloat(value) || 0;
+                    const newData = JSON.parse(JSON.stringify(data));
+                    const index = newData.findIndex(w => w.id === weekId);
+                    if (index === -1) return;
+                    newData[index][section][role] = numValue;
+                    const alloc = newData[index].allocated; const act = newData[index].actual;
+                    newData[index].allocatedTotal = parseFloat((alloc.pm + alloc.lead + alloc.dev1 + alloc.dev2).toFixed(2));
+                    newData[index].actualTotal = parseFloat((act.pm + act.lead + act.dev1 + act.dev2).toFixed(2));
+                    newData[index].variance = parseFloat((newData[index].actualTotal - newData[index].allocatedTotal).toFixed(2));
+                    let running = index > 0 ? newData[index - 1].cumulativeVariance : 0;
+                    for (let i = index; i < newData.length; i++) {
+                        running += newData[i].variance;
+                        newData[i].cumulativeVariance = parseFloat(running.toFixed(2));
+                    }
+                    onDataUpdate(newData);
+                };
+
+                const inputClass = isReadOnly 
+                    ? "w-full text-right bg-transparent outline-none rounded px-1 py-1 text-slate-600 cursor-default"
+                    : "w-full text-right bg-transparent focus:bg-white focus:ring-1 focus:ring-brand-500 outline-none rounded px-1 py-1 transition-colors";
+
+                return (
+                    <div className="p-8 space-y-6">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                            <div><h2 className="text-2xl font-bold text-slate-900">Data Entry Log</h2>
+                                <div className="flex items-center gap-2 mt-1"><span className="text-slate-500">{isReadOnly ? 'Viewing Year:' : 'Editing Year:'}</span>
+                                {isReadOnly ? (
+                                    <span className="text-slate-800 font-bold px-2 py-0.5 rounded text-sm bg-slate-100 border border-slate-200">{year}</span>
+                                ) : (
+                                    <div className="relative group"><button className="flex items-center gap-1 text-slate-800 font-bold bg-slate-200 px-2 py-0.5 rounded text-sm hover:bg-slate-300 transition-colors cursor-pointer">{year} <ChevronDown size={14} /></button>
+                                    <div className="absolute top-full left-0 mt-1 w-32 bg-white rounded-lg shadow-xl border border-slate-100 hidden group-hover:block z-20 overflow-hidden">{availableYears.map(y => <button key={y} onClick={() => onSwitchYear(y)} className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${year === y ? 'font-bold text-brand-600 bg-slate-50' : 'text-slate-600'}`}>{y} {y !== year && availableYears.includes(y) ? '(Archived)' : ''}</button>)}</div></div>
+                                )}
+                                </div></div>
+                            {!isReadOnly && (
+                            <div className="flex items-center gap-3">
+                                <div className="flex items-center bg-white border border-slate-300 rounded-lg shadow-sm p-1 gap-2">
+                                    <select value={targetInitYear} onChange={(e) => { setTargetInitYear(Number(e.target.value)); setIsConfirmingReset(false); }} className="bg-slate-50 border-transparent text-slate-700 text-sm rounded-md font-bold outline-none">{Array.from({length: 11}, (_, i) => 2025 + i).map(y => <option key={y} value={y}>{y}</option>)}</select>
+                                    <button type="button" onClick={handleInitClick} className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all cursor-pointer text-sm ${isConfirmingReset ? 'bg-red-600 text-white animate-pulse' : 'bg-emerald-50 text-emerald-700'}`}>{isConfirmingReset ? <><AlertTriangle size={16} /><span className="font-bold">Confirm {targetInitYear}?</span></> : <><CalendarPlus size={16} /><span className="font-medium">Initialize</span></>}</button>
+                                </div>
+                                <div className="h-8 w-px bg-slate-200 mx-1"></div>
+                                <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" className="hidden" />
+                                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={loading} className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg transition-colors disabled:opacity-50 shadow-sm cursor-pointer">{loading ? <span className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin"></span> : <Upload size={18} />}Import Excel</button>
+                            </div>
+                            )}
+                        </div>
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div><label className="block text-sm font-medium text-slate-700 mb-2">Client Name</label><input type="text" disabled={isReadOnly} value={clientName} onChange={(e) => setClientName(e.target.value)} className={`w-full px-4 py-2 border border-slate-300 rounded-lg outline-none ${isReadOnly ? 'bg-slate-50 text-slate-500' : ''}`} placeholder="Client Name..." /></div>
+                            <div><label className="block text-sm font-medium text-slate-700 mb-2">Project Manager</label><input type="text" disabled={isReadOnly} value={pmName} onChange={(e) => setPmName(e.target.value)} className={`w-full px-4 py-2 border border-slate-300 rounded-lg outline-none ${isReadOnly ? 'bg-slate-50 text-slate-500' : ''}`} placeholder="PM Name..." /></div>
+                        </div>
+                        {error && <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2"><AlertCircle size={18} />{error}</div>}
+                        {successMsg && <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex items-center gap-2"><CheckCircle2 size={18} />{successMsg}</div>}
+                        <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden flex flex-col">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm text-left border-collapse">
+                                    <thead className="bg-slate-50 text-slate-500 font-medium border-b border-slate-200">
+                                        <tr>
+                                            <th rowSpan={2} className="px-4 py-3 min-w-[140px] border-r border-slate-200 bg-slate-50 sticky left-0 z-10">Week</th>
+                                            <th colSpan={4} className="px-4 py-2 text-center bg-blue-50/50 border-r border-slate-200 text-blue-700 font-bold border-b">Allocated Hours</th>
+                                            <th colSpan={4} className="px-4 py-2 text-center bg-indigo-50/50 border-r border-slate-200 text-indigo-700 font-bold border-b">Actual Hours</th>
+                                            <th rowSpan={2} className="px-4 py-3 text-center w-24 border-r border-slate-200 bg-slate-50">Total Alloc</th><th rowSpan={2} className="px-4 py-3 text-center w-24 border-r border-slate-200 bg-slate-50">Total Actual</th><th rowSpan={2} className="px-4 py-3 text-right w-24 bg-slate-50">Variance</th>
+                                        </tr>
+                                        <tr>
+                                            {['PM','Lead','Dev1','Dev2'].map(h => <th key={`all-${h}`} className="px-2 py-2 w-20 bg-blue-50/30 text-xs text-center border-r border-slate-200">{h}</th>)}
+                                            {['PM','Lead','Dev1','Dev2'].map(h => <th key={`act-${h}`} className="px-2 py-2 w-20 bg-indigo-50/30 text-xs text-center border-r border-slate-200">{h}</th>)}
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                        {data.map((week) => (
+                                            <tr key={week.id} className="hover:bg-slate-50 transition-colors group">
+                                                <td className="px-4 py-2 font-medium text-slate-700 text-xs bg-white sticky left-0 group-hover:bg-slate-50 border-r border-slate-100">{week.weekRange}</td>
+                                                {['pm','lead','dev1','dev2'].map(role => <td key={`alloc-${role}`} className="px-1 py-1 border-r border-slate-100 bg-blue-50/10"><input type="number" readOnly={isReadOnly} value={week.allocated[role]} onChange={e => handleCellChange(week.id, 'allocated', role, e.target.value)} className={inputClass} /></td>)}
+                                                {['pm','lead','dev1','dev2'].map(role => <td key={`act-${role}`} className="px-1 py-1 border-r border-slate-100 bg-indigo-50/10"><input type="number" readOnly={isReadOnly} value={week.actual[role]} onChange={e => handleCellChange(week.id, 'actual', role, e.target.value)} className={inputClass} /></td>)}
+                                                <td className="px-4 py-2 text-center text-xs text-slate-500 border-r border-slate-100 bg-slate-50/50">{week.allocatedTotal.toFixed(1)}</td>
+                                                <td className="px-4 py-2 text-center text-xs font-bold text-slate-700 border-r border-slate-100 bg-slate-50/50">{week.actualTotal.toFixed(1)}</td>
+                                                <td className={`px-4 py-2 text-right font-bold text-xs ${week.variance > 0 ? 'text-red-600' : 'text-emerald-600'} bg-slate-50/50`}>{week.variance > 0 ? '+' : ''}{week.variance.toFixed(1)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            const App = () => {
+                const [activeTab, setActiveTab] = useState('dashboard');
+                const [data, setData] = useState(() => { const s = localStorage.getItem('rt360_data'); return s ? JSON.parse(s) : INITIAL_DATA; });
+                const [year, setYear] = useState(() => { const s = localStorage.getItem('rt360_year'); return s ? JSON.parse(s) : 2025; });
+                const [archives, setArchives] = useState(() => { const s = localStorage.getItem('rt360_archives'); return s ? JSON.parse(s) : {}; });
+                const [clientName, setClientName] = useState(() => localStorage.getItem('rt360_client') || "Client ABC");
+                const [pmName, setPmName] = useState(() => localStorage.getItem('rt360_pm') || "John Doe");
+                const [isReadOnly, setIsReadOnly] = useState(false);
+                const [loadError, setLoadError] = useState(null);
+
+                useEffect(() => {
+                    if (!isReadOnly) {
+                        localStorage.setItem('rt360_data', JSON.stringify(data));
+                        localStorage.setItem('rt360_year', JSON.stringify(year));
+                        localStorage.setItem('rt360_archives', JSON.stringify(archives));
+                        localStorage.setItem('rt360_client', clientName);
+                        localStorage.setItem('rt360_pm', pmName);
+                    }
+                }, [data, year, archives, clientName, pmName, isReadOnly]);
+
+                const loadFromHash = () => {
+                    const href = window.location.href;
+                    const shareIndex = href.indexOf('#share=');
+                    if (shareIndex !== -1) {
+                        try {
+                            const compressed = href.substring(shareIndex + 7);
+                            if (!compressed) return;
+                            const decompressed = window.LZString.decompressFromEncodedURIComponent(compressed);
+                            if (decompressed) {
+                                const sharedState = JSON.parse(decompressed);
+                                if (sharedState.d && Array.isArray(sharedState.d)) {
+                                    setData(sharedState.d);
+                                    if (sharedState.c) setClientName(sharedState.c);
+                                    if (sharedState.p) setPmName(sharedState.p);
+                                    if (sharedState.y) setYear(sharedState.y);
+                                    setIsReadOnly(true); setActiveTab('dashboard'); setLoadError(null);
+                                } else { setLoadError("Invalid data format in link"); }
+                            } else { setLoadError("Failed to decompress link."); }
+                        } catch (err) { setLoadError("Link is corrupted."); }
+                    }
+                };
+
+                useEffect(() => {
+                    loadFromHash();
+                    const onHashChange = () => loadFromHash();
+                    window.addEventListener('hashchange', onHashChange);
+                    return () => window.removeEventListener('hashchange', onHashChange);
+                }, []);
+
+                const handleDataUpdate = (newData) => { if (isReadOnly) return; setData(newData); };
+                const handleYearSwitch = (targetYear) => {
+                    if (isReadOnly || targetYear === year) return;
+                    setArchives(prev => ({ ...prev, [year]: [...data] }));
+                    const targetData = archives[targetYear];
+                    if (targetData) { setData(targetData); setYear(targetYear); }
+                };
+                const handleInitializeNewYear = (newYear, templateData) => {
+                    if (isReadOnly) return;
+                    if (year !== newYear) setArchives(prev => ({ ...prev, [year]: [...data] }));
+                    setData(templateData); setYear(newYear);
+                };
+                
+                // --- 6. INTELLIGENT SHARE LOGIC ---
+                const handleShare = () => {
+                    try {
+                        const stateToShare = { d: data, c: clientName, p: pmName, y: year };
+                        const compressed = window.LZString.compressToEncodedURIComponent(JSON.stringify(stateToShare));
+                        
+                        let baseUrl = window.location.href.split('#')[0]; 
+                        
+                        // Detect if running locally (localhost, 127.0.0.1, or file://)
+                        const hostname = window.location.hostname;
+                        const isLocal = hostname === 'localhost' || 
+                                        hostname === '127.0.0.1' || 
+                                        hostname === '[::1]' ||
+                                        window.location.protocol === 'file:';
+
+                        if (isLocal) {
+                            const storedPublicUrl = localStorage.getItem('rt360_public_url');
+                            let targetUrl = storedPublicUrl;
+
+                            if (!targetUrl) {
+                                // First time prompt
+                                const userUrl = prompt(
+                                    "⚠️ Local Environment Detected\n\n" +
+                                    "To generate a link that works for others, enter the Public URL where this app will be hosted (e.g., GitHub Pages).\n" +
+                                    "Example: https://username.github.io/repo-name/\n\n" +
+                                    "(Leave empty to keep using localhost)"
+                                );
+                                if (userUrl && userUrl.trim().length > 0) {
+                                    targetUrl = userUrl.trim();
+                                    localStorage.setItem('rt360_public_url', targetUrl);
+                                }
+                            } else {
+                                // If already stored, give user a chance to verify/change it 
+                                const useStored = window.confirm(
+                                    "Generating share link using your configured Public URL:\n\n" + storedPublicUrl + "\n\nClick OK to proceed, or Cancel to change this URL."
+                                );
+
+                                if (!useStored) {
+                                    const newUrl = prompt("Enter new Public URL:", storedPublicUrl);
+                                    if (newUrl && newUrl.trim().length > 0) {
+                                        targetUrl = newUrl.trim();
+                                        localStorage.setItem('rt360_public_url', targetUrl);
+                                    } else if (newUrl === "") {
+                                        // If cleared, maybe reset?
+                                        localStorage.removeItem('rt360_public_url');
+                                        targetUrl = null;
+                                    }
+                                }
+                            }
+
+                            if (targetUrl) {
+                                baseUrl = targetUrl;
+                            }
+                        }
+
+                        const url = `${baseUrl}#share=${compressed}`;
+                        
+                        // Use clipboard API
+                        navigator.clipboard.writeText(url).then(() => {
+                            alert("✅ Share Link Copied!\n\nUse this link to share the current view.");
+                        }).catch(() => {
+                            // Fallback if clipboard API fails
+                            window.prompt("Copy this link:", url);
+                        });
+                    } catch (err) {
+                        console.error(err);
+                        alert("Data is too large to share via link."); 
+                    }
+                };
+
+                const availableYears = Array.from(new Set([year, ...Object.keys(archives).map(Number)])).sort((a, b) => b - a);
+
+                if (loadError) return (<div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-800 p-4"><div className="bg-white p-8 rounded-xl shadow-lg border border-red-100 max-w-md text-center"><h2 className="text-xl font-bold mb-2">Unable to Load View</h2><p className="text-slate-500 mb-6">{loadError}</p><button onClick={() => { window.location.hash = ''; window.location.reload(); }} className="bg-slate-900 text-white px-6 py-2 rounded-lg font-medium">Return to Home</button></div></div>);
+
+                return (
+                    <Layout activeTab={activeTab} onTabChange={setActiveTab} pmName={pmName} isReadOnly={isReadOnly} onShare={handleShare}>
+                        {activeTab === 'dashboard' ? <Dashboard data={data} clientName={clientName} pmName={pmName} year={year} /> : <DataLog key={`data-log-${year}`} data={data} onDataUpdate={handleDataUpdate} clientName={clientName} setClientName={setClientName} pmName={pmName} setPmName={setPmName} year={year} availableYears={availableYears} onSwitchYear={handleYearSwitch} onInitializeNewYear={handleInitializeNewYear} isReadOnly={isReadOnly} />}
+                    </Layout>
+                );
+            };
+
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(<App />);
+
+        } catch (err) {
+            console.error(err);
+            document.getElementById('root').style.display = 'none';
+            document.getElementById('error-container').style.display = 'block';
+            document.getElementById('error-message').textContent = "Initialization failed: " + err.message;
+        }
+    </script>
+</body>
+</html>
